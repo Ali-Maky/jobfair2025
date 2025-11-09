@@ -417,7 +417,8 @@ export default function JobFairLanding() {
   }
 
   function parseCSV(text) {
-    const lines = text.split(/?
+    const lines = text.split(/
+?
 /).filter(Boolean);
     if (!lines.length) return [];
     const headers = lines[0].split(",").map((h) => h.trim());
@@ -633,43 +634,52 @@ function AdminLoginModal({ onClose, onSuccess }) {
     </motion.div>
   );
 }
+async function handleSubmit(e: React.FormEvent) {
+  e.preventDefault();
+  const v = validate();
+  if (v) { setError(v); setOk(false); return; }
+  setError("");
 
-function JobModal({ job, onClose, onSubmitted }) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [file, setFile] = useState(null);
-  const [error, setError] = useState("");
-  const [ok, setOk] = useState(false);
+  try {
+    // 1) Upload the CV to Blob via serverless function
+    let cvUrl = "", cvBlobId = "";
+    if (file) {
+      const fd = new FormData();
+      fd.append("jobId", job.id);
+      fd.append("file", file, file.name);
 
-  function validate() {
-    if (!name.trim()) return "Please enter your full name.";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      return "Please enter a valid email.";
-    if (!/^[0-9+\-()\s]{7,}$/.test(phone))
-      return "Please enter a valid phone number.";
-    if (!file) return "Please attach your CV (PDF or DOCX).";
-    const okType = [
-      "application/pdf",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "application/msword",
-    ];
-    if (!okType.includes(file.type))
-      return "Unsupported file type. Upload PDF or DOC/DOCX.";
-    const maxMB = 10;
-    if (file.size > maxMB * 1024 * 1024)
-      return `File is too large. Max ${maxMB}MB.`;
-    return "";
-  }
-
-  function handleSubmit(e) {
-    e.preventDefault();
-    const v = validate();
-    if (v) {
-      setError(v);
-      setOk(false);
-      return;
+      const upl = await fetch("/api/upload", { method: "POST", body: fd });
+      const up = await upl.json();
+      if (!upl.ok || !up?.ok) throw new Error(up?.error || "Upload failed");
+      cvUrl = up.cvUrl; cvBlobId = up.cvBlobId;
     }
+
+    // 2) Save record in Postgres
+    const resp = await fetch("/api/apply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jobId: job.id,
+        jobTitle: job.title,
+        company: job.company,
+        location: job.location,
+        type: job.type,
+        tags: (job.tags || []).join(","),
+        name, email, phone,
+        cvUrl, cvBlobId
+      })
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data?.ok) throw new Error(data?.error || "Could not save application");
+
+    setOk(true);
+    onSubmitted?.(job.id);
+    setName(""); setEmail(""); setPhone(""); setFile(null);
+  } catch (err:any) {
+    setOk(false);
+    setError(err?.message || "Submission failed");
+  }
+}
     setError("");
 
     // Simulated submission — store minimal record locally.
