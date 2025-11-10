@@ -1,17 +1,18 @@
-// /api/upload.ts (at repo root)
-import type { VercelRequest, VercelResponse } from "@vercel/node";
+// /api/upload.ts
+// Node serverless function WITHOUT @vercel/node types.
+// Requires deps: "busboy" and "@vercel/blob" in package.json.
 import * as BusboyNS from "busboy";
 import { put } from "@vercel/blob";
 
 export const config = { api: { bodyParser: false } };
 
+// Handle default or namespace busboy import shapes
 function getBusboy() {
-  // supports both default and namespace import
   const BB: any = (BusboyNS as any).default ?? (BusboyNS as any);
   return BB;
 }
 
-function parseMultipart(req: VercelRequest): Promise<{
+function parseMultipart(req: any): Promise<{
   fields: Record<string, string>;
   file?: { buffer: Buffer; filename: string; mimetype: string };
 }> {
@@ -24,27 +25,47 @@ function parseMultipart(req: VercelRequest): Promise<{
     let fileName = "";
     let mime = "";
 
-    bb.on("field", (name: string, val: string) => { fields[name] = val; });
-    bb.on("file", (_name: string, file: NodeJS.ReadableStream, info: any) => {
+    bb.on("field", (name: string, val: string) => {
+      fields[name] = val;
+    });
+
+    bb.on("file", (_name: string, file: any, info: any) => {
       fileName = info?.filename || "cv";
       mime = info?.mimeType || "application/octet-stream";
       const chunks: Buffer[] = [];
       file.on("data", (d: Buffer) => chunks.push(d));
       file.on("end", () => (fileBuf = Buffer.concat(chunks)));
     });
+
     bb.on("error", reject);
-    bb.on("close", () => resolve({ fields, file: fileBuf ? { buffer: fileBuf, filename: fileName, mimetype: mime } : undefined }));
-    (req as any).pipe(bb);
+    bb.on("close", () =>
+      resolve({
+        fields,
+        file: fileBuf
+          ? { buffer: fileBuf, filename: fileName, mimetype: mime }
+          : undefined,
+      })
+    );
+
+    req.pipe(bb);
   });
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    return res.status(500).json({ ok: false, error: "Missing BLOB_READ_WRITE_TOKEN env var" });
+  // Accept common env var names Vercel may create when connecting a store
+  const BLOB_TOKEN =
+    process.env.BLOB_READ_WRITE_TOKEN ||
+    process.env.BLOB_READ_WRITE_TOKEN__jobfair_cvs || // <- rename to match your store if needed
+    "";
+
+  if (!BLOB_TOKEN) {
+    return res
+      .status(500)
+      .json({ ok: false, error: "Missing Blob Read/Write token env var" });
   }
 
   try {
@@ -64,9 +85,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       ok: true,
       cvUrl: putResult.url,
-      cvBlobId: putResult.url,
+      cvBlobId: putResult.url, // id == url for private blobs
     });
   } catch (e: any) {
-    return res.status(500).json({ ok: false, error: e?.message || "Upload failed" });
+    return res
+      .status(500)
+      .json({ ok: false, error: e?.message || "Upload failed" });
   }
 }
