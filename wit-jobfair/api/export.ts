@@ -1,6 +1,17 @@
 // /api/export.ts
 import { google } from "googleapis";
-import { getGoogleAuth } from "./_google";
+
+function getAuth() {
+  const b64 = process.env.GOOGLE_CLOUD_CREDENTIALS_BASE64 || "";
+  if (!b64) throw new Error("Missing GOOGLE_CLOUD_CREDENTIALS_BASE64");
+  const json = Buffer.from(b64, "base64").toString("utf8");
+  const creds = JSON.parse(json);
+  return new google.auth.JWT({
+    email: creds.client_email,
+    key: creds.private_key,
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+}
 
 function csvEscape(v: any) {
   const s = (v ?? "").toString();
@@ -18,19 +29,27 @@ export default async function handler(req: any, res: any) {
     const sheetId = process.env.GOOGLE_SHEETS_ID || "";
     if (!sheetId) return res.status(500).json({ ok: false, error: "Missing GOOGLE_SHEETS_ID" });
 
-    const auth = getGoogleAuth();
+    const auth = getAuth();
     const sheets = google.sheets({ version: "v4", auth });
 
-    // Read entire first sheet
     const resp = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
       range: "A:Z"
     });
 
     const rows = (resp.data.values || []) as string[][];
-    if (!rows.length) return res.status(200).send("timestamp,jobId,jobTitle,company,location,type,tags,name,email,phone,cvUrl,cvFileId");
+    if (!rows.length) {
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", 'attachment; filename="applications-export.csv"');
+      return res.status(200).send("timestamp,jobId,jobTitle,company,location,type,tags,name,email,phone,cvUrl,cvFileId");
+    }
 
-    const csv = rows.map(r => r.map(csvEscape).join(",")).join("\n");
+    const csvLines: string[] = [];
+    for (const r of rows) {
+      csvLines.push(r.map(csvEscape).join(","));
+    }
+    const csv = csvLines.join("\n");
+
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", 'attachment; filename="applications-export.csv"');
     return res.status(200).send(csv);
