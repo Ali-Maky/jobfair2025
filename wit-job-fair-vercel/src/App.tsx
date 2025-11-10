@@ -571,56 +571,44 @@ export default function JobFairLanding() {
         ? j.tags.split(",").map((x) => x.trim()).filter(Boolean)
         : [],
       description: j.description || "",
-      responsibilities: Array.isArray(j.responsibilities)
-        ? j.responsibilities
-        : typeof j.responsibilities === "string" && j.responsibilities
-        ? j.responsibilities
-            .split(/;|\n/)
-/)
-            .map((x) => x.trim())
-            .filter(Boolean)
-        : [],
-      requirements: Array.isArray(j.requirements)
-        ? j.requirements
-        : typeof j.requirements === "string" && j.requirements
-        ? j.requirements
-            .split(/;|\n/)
-/)
-            .map((x) => x.trim())
-            .filter(Boolean)
-        : [],
+     responsibilities: Array.isArray(j.responsibilities)
+  ? j.responsibilities
+  : typeof j.responsibilities === "string" && j.responsibilities
+  ? j.responsibilities.split(/;|\n/).map((x) => x.trim()).filter(Boolean)
+  : [],
+requirements: Array.isArray(j.requirements)
+  ? j.requirements
+  : typeof j.requirements === "string" && j.requirements
+  ? j.requirements.split(/;|\n/).map((x) => x.trim()).filter(Boolean)
+  : [],
     };
   }
 
   function parseCSV(text) {
-    const lines = text.split(/\r?\n/).filter(Boolean);
-?
-/).filter(Boolean);
-    if (!lines.length) return [];
-    const headers = lines[0].split(",").map((h) => h.trim());
-    return lines.slice(1).map((line) => {
-      const cols = [];
-      let current = "";
-      let inQuotes = false;
-      for (let i = 0; i < line.length; i++) {
-        const ch = line[i];
-        if (ch === '"') {
-          inQuotes = !inQuotes;
-          continue;
-        }
-       if (ch === "," && !inQuotes) {
-          cols.push(current);
-          current = "";
-        } else {
-          current += ch;
-        }
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  if (!lines.length) return [];
+  const headers = lines[0].split(",").map((h) => h.trim());
+  return lines.slice(1).map((line) => {
+    const cols = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { inQuotes = !inQuotes; continue; }
+      if (ch === "," && !inQuotes) {
+        cols.push(current);
+        current = "";
+      } else {
+        current += ch;
       }
-      cols.push(current);
-      const obj = {};
-      headers.forEach((h, idx) => (obj[h] = (cols[idx] || "").trim()));
-      return obj;
-    });
-  }
+    }
+    cols.push(current);
+    const obj = {};
+    headers.forEach((h, idx) => (obj[h] = (cols[idx] || "").trim()));
+    return obj;
+  });
+}
+
 
   async function handleImportFile(e) {
     const f = e.target.files?.[0];
