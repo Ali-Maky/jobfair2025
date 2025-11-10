@@ -1,44 +1,41 @@
 // /api/apply.ts
-import { createClient } from "@supabase/supabase-js";
+import { google } from "googleapis";
+import { getGoogleAuth } from "./_google";
 
 export default async function handler(req: any, res: any) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  const SUPABASE_URL = process.env.SUPABASE_URL;
-  const SUPABASE_SERVICE_ROLE =
-    process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE) {
-    return res.status(500).json({ ok: false, error: "Missing SUPABASE_URL or SERVICE_ROLE env vars" });
-  }
-
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
   try {
-    const body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
-    const payload = {
-      job_id: body.jobId ?? null,
-      job_title: body.jobTitle ?? null,
-      company: body.company ?? null,
-      location: body.location ?? null,
-      type: body.type ?? null,
-      tags: body.tags ?? null,
-      name: body.name ?? null,
-      email: body.email ?? null,
-      phone: body.phone ?? null,
-      cv_url: body.cvUrl ?? null,
-      cv_blob_id: body.cvBlobId ?? null,
-    };
+    const {
+      jobId, jobTitle, company, location, type, tags,
+      name, email, phone, cvUrl, cvFileId
+    } = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
 
-    const { error } = await supabase.from("applications").insert(payload);
-    if (error) return res.status(500).json({ ok: false, error: error.message });
+    const sheetId = process.env.GOOGLE_SHEETS_ID || "";
+    if (!sheetId) return res.status(500).json({ ok: false, error: "Missing GOOGLE_SHEETS_ID" });
+
+    const auth = getGoogleAuth();
+    const sheets = google.sheets({ version: "v4", auth });
+
+    // Append at end of first sheet (A:…)
+    const values = [[
+      new Date().toISOString(),
+      jobId || "", jobTitle || "", company || "", location || "", type || "", tags || "",
+      name || "", email || "", phone || "",
+      cvUrl || "", cvFileId || ""
+    ]];
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: sheetId,
+      range: "A:Z",
+      valueInputOption: "RAW",
+      requestBody: { values }
+    });
 
     return res.status(200).json({ ok: true });
   } catch (e: any) {
-    return res.status(500).json({ ok: false, error: e?.message || "DB insert failed" });
+    return res.status(500).json({ ok: false, error: e?.message || "Append failed" });
   }
 }
