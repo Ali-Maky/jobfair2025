@@ -1,6 +1,7 @@
 // /api/upload.ts
 import * as BusboyNS from "busboy";
-import { put } from "@vercel/blob";
+import { google } from "googleapis";
+import { getGoogleAuth } from "./_google";
 
 export const config = { api: { bodyParser: false } };
 
@@ -23,21 +24,18 @@ function parseMultipart(req: any): Promise<{
     let mime = "";
 
     bb.on("field", (name: string, val: string) => { fields[name] = val; });
-
-    bb.on("file", (_name: string, file: any, info: any) => {
+    bb.on("file", (_: string, file: any, info: any) => {
       fileName = info?.filename || "cv";
       mime = info?.mimeType || "application/octet-stream";
       const chunks: Buffer[] = [];
       file.on("data", (d: Buffer) => chunks.push(d));
       file.on("end", () => (fileBuf = Buffer.concat(chunks)));
     });
-
     bb.on("error", reject);
     bb.on("close", () => resolve({
       fields,
-      file: fileBuf ? { buffer: fileBuf, filename: fileName, mimetype: mime } : undefined,
+      file: fileBuf ? { buffer: fileBuf, filename: fileName, mimetype: mime } : undefined
     }));
-
     req.pipe(bb);
   });
 }
@@ -47,35 +45,36 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  // Accept the common names Vercel may create
-  const BLOB_TOKEN =
-    process.env.BLOB_READ_WRITE_TOKEN ||
-    process.env.BLOB_READ_WRITE_TOKEN__jobfair_cvs || // change suffix if your store name differs
-    "";
-
-  if (!BLOB_TOKEN) {
-    return res.status(500).json({ ok: false, error: "Missing Blob Read/Write token env var" });
-  }
-
   try {
     const { fields, file } = await parseMultipart(req);
     if (!file) return res.status(400).json({ ok: false, error: "No file uploaded" });
 
-    const jobId = fields.jobId || "unknown";
-    const safeName = file.filename.replace(/[^\w.\-]+/g, "_");
-    const key = `cvs/${jobId}/${Date.now()}-${safeName}`;
+    const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID || "";
+    if (!folderId) return res.status(500).json({ ok: false, error: "Missing GOOGLE_DRIVE_FOLDER_ID" });
 
-    const putResult = await put(key, file.buffer, {
-      access: "private",
-      contentType: file.mimetype,
-      addRandomSuffix: false,
+    const auth = getGoogleAuth();
+    const drive = google.drive({ version: "v3", auth });
+
+    const name = `${fields.jobId || "unknown"}__${Date.now()}__${file.filename}`;
+    const fileMeta = { name, parents: [folderId] };
+    const media = { mimeType: file.mimetype, body: Buffer.from(file.buffer) as any };
+
+    // Upload
+    const create = await drive.files.create({
+      requestBody: fileMeta,
+      media,
+      fields: "id, webViewLink, webContentLink",
+    } as any);
+
+    const id = create.data.id!;
+    // Make sure link is accessible to anyone with the link (optional)
+    await drive.permissions.create({
+      fileId: id,
+      requestBody: { role: "reader", type: "anyone" },
     });
 
-    return res.status(200).json({
-      ok: true,
-      cvUrl: putResult.url,
-      cvBlobId: putResult.url, // id == url for private blobs
-    });
+    const webViewLink = create.data.webViewLink || `https://drive.google.com/file/d/${id}/view`;
+    return res.status(200).json({ ok: true, cvUrl: webViewLink, cvFileId: id });
   } catch (e: any) {
     return res.status(500).json({ ok: false, error: e?.message || "Upload failed" });
   }
