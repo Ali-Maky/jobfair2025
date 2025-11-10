@@ -1,6 +1,4 @@
 // /api/export.ts
-// Export applicants CSV from Supabase + signed Blob links.
-// Requires deps: "@supabase/supabase-js" and "@vercel/blob".
 import { createClient } from "@supabase/supabase-js";
 import { get } from "@vercel/blob";
 
@@ -17,11 +15,11 @@ export default async function handler(req: any, res: any) {
   }
 
   const SUPABASE_URL = process.env.SUPABASE_URL;
-  const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
+  const SUPABASE_SERVICE_ROLE =
+    process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY;
+
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE) {
-    return res
-      .status(500)
-      .json({ ok: false, error: "Missing SUPABASE env vars" });
+    return res.status(500).json({ ok: false, error: "Missing SUPABASE env vars" });
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE, {
@@ -35,7 +33,6 @@ export default async function handler(req: any, res: any) {
       .order("created_at", { ascending: false });
     if (error) throw error;
 
-    // Try to add a signed download URL for each Blob
     const withSigned = await Promise.all(
       (data || []).map(async (r: any) => {
         let cv_signed_url = "";
@@ -44,35 +41,20 @@ export default async function handler(req: any, res: any) {
             const info = await get(r.cv_blob_id);
             cv_signed_url = (info as any)?.downloadUrl || "";
           }
-        } catch {
-          // ignore signing errors
-        }
+        } catch {}
         return { ...r, cv_signed_url };
       })
     );
 
     const headers = [
-      "id",
-      "created_at",
-      "job_id",
-      "job_title",
-      "company",
-      "location",
-      "type",
-      "tags",
-      "name",
-      "email",
-      "phone",
-      "cv_url",
-      "cv_blob_id",
-      "cv_signed_url"
+      "id","created_at","job_id","job_title","company","location","type","tags",
+      "name","email","phone","cv_url","cv_blob_id","cv_signed_url"
     ];
 
     const lines = [];
     lines.push(headers.join(","));
     for (const r of withSigned) {
-      const row = headers.map((h) => csvEscape(r[h])).join(",");
-      lines.push(row);
+      lines.push(headers.map(h => csvEscape(r[h])).join(","));
     }
     const csv = lines.join("\n");
 
@@ -80,8 +62,6 @@ export default async function handler(req: any, res: any) {
     res.setHeader("Content-Disposition", 'attachment; filename="applications-export.csv"');
     return res.status(200).send(csv);
   } catch (e: any) {
-    return res
-      .status(500)
-      .json({ ok: false, error: e?.message || "Export failed" });
+    return res.status(500).json({ ok: false, error: e?.message || "Export failed" });
   }
 }
