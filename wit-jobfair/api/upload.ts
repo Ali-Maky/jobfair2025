@@ -1,13 +1,27 @@
 // /api/upload.ts
 import * as BusboyNS from "busboy";
 import { google } from "googleapis";
-import { getGoogleAuth } from "./_google";
 
 export const config = { api: { bodyParser: false } };
 
 function getBusboy() {
   const BB: any = (BusboyNS as any).default ?? (BusboyNS as any);
   return BB;
+}
+
+function getAuth() {
+  const b64 = process.env.GOOGLE_CLOUD_CREDENTIALS_BASE64 || "";
+  if (!b64) throw new Error("Missing GOOGLE_CLOUD_CREDENTIALS_BASE64");
+  const json = Buffer.from(b64, "base64").toString("utf8");
+  const creds = JSON.parse(json);
+  return new google.auth.JWT({
+    email: creds.client_email,
+    key: creds.private_key,
+    scopes: [
+      "https://www.googleapis.com/auth/drive",
+      "https://www.googleapis.com/auth/spreadsheets",
+    ],
+  });
 }
 
 function parseMultipart(req: any): Promise<{
@@ -36,6 +50,7 @@ function parseMultipart(req: any): Promise<{
       fields,
       file: fileBuf ? { buffer: fileBuf, filename: fileName, mimetype: mime } : undefined
     }));
+
     req.pipe(bb);
   });
 }
@@ -52,28 +67,26 @@ export default async function handler(req: any, res: any) {
     const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID || "";
     if (!folderId) return res.status(500).json({ ok: false, error: "Missing GOOGLE_DRIVE_FOLDER_ID" });
 
-    const auth = getGoogleAuth();
+    const auth = getAuth();
     const drive = google.drive({ version: "v3", auth });
 
-    const name = `${fields.jobId || "unknown"}__${Date.now()}__${file.filename}`;
-    const fileMeta = { name, parents: [folderId] };
-    const media = { mimeType: file.mimetype, body: Buffer.from(file.buffer) as any };
+    const safeName = file.filename.replace(/[^\w.\-]+/g, "_");
+    const name = (fields.jobId || "unknown") + "__" + Date.now() + "__" + safeName;
 
-    // Upload
     const create = await drive.files.create({
-      requestBody: fileMeta,
-      media,
-      fields: "id, webViewLink, webContentLink",
+      requestBody: { name, parents: [folderId] },
+      media: { mimeType: file.mimetype, body: Buffer.from(file.buffer) as any },
+      fields: "id, webViewLink",
     } as any);
 
     const id = create.data.id!;
-    // Make sure link is accessible to anyone with the link (optional)
     await drive.permissions.create({
       fileId: id,
       requestBody: { role: "reader", type: "anyone" },
     });
 
-    const webViewLink = create.data.webViewLink || `https://drive.google.com/file/d/${id}/view`;
+    const webViewLink = create.data.webViewLink || ("https://drive.google.com/file/d/" + id + "/view");
+
     return res.status(200).json({ ok: true, cvUrl: webViewLink, cvFileId: id });
   } catch (e: any) {
     return res.status(500).json({ ok: false, error: e?.message || "Upload failed" });
