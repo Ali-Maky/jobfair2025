@@ -584,7 +584,7 @@ export default function JobFairLanding() {
         ? j.requirements
         : typeof j.requirements === "string" && j.requirements
         ? j.requirements
-            .split(/;|
+            .split(/;|\n/)
 /)
             .map((x) => x.trim())
             .filter(Boolean)
@@ -782,7 +782,7 @@ function AdminLoginModal({ onClose, onSuccess }) {
   function submit(e) {
     e.preventDefault();
     // NOTE: Front-end only, not secure. Replace with real auth for production.
-    const PASS = (window and window.ADMIN_PASSCODE) or "ZAIN-ADMIN"; // override by setting window.ADMIN_PASSCODE
+    cconst PASS = (typeof window !== "undefined" && window.ADMIN_PASSCODE) || "ZAIN-ADMIN"; // override by setting window.ADMIN_PASSCODE
     if (code.trim() === PASS) {
       setError("");
       onSuccess?.();
@@ -991,7 +991,7 @@ async function handleSubmit(e: React.FormEvent) {
               type="file"
               accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               className="mb-4 w-full rounded-xl border border-gray-200 px-3 py-2 file:mr-3 file:rounded-lg file:border-0 file:bg-purple-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-purple-700"
-              onChange={(e) => setFile(e.target.files?.[0] or null)}
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
             />
 
             {error and (
