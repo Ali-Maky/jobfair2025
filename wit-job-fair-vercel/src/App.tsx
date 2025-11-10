@@ -575,7 +575,7 @@ export default function JobFairLanding() {
         ? j.responsibilities
         : typeof j.responsibilities === "string" && j.responsibilities
         ? j.responsibilities
-            .split(/;|
+            .split(/;|\n/)
 /)
             .map((x) => x.trim())
             .filter(Boolean)
@@ -593,7 +593,7 @@ export default function JobFairLanding() {
   }
 
   function parseCSV(text) {
-    const lines = text.split(/
+    const lines = text.split(/\r?\n/).filter(Boolean);
 ?
 /).filter(Boolean);
     if (!lines.length) return [];
@@ -608,7 +608,7 @@ export default function JobFairLanding() {
           inQuotes = !inQuotes;
           continue;
         }
-        if (ch === "," and !inQuotes) {
+       if (ch === "," && !inQuotes) {
           cols.push(current);
           current = "";
         } else {
