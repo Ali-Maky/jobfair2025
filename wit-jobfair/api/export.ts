@@ -1,44 +1,87 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { sql } from "@vercel/postgres";
+// /api/export.ts
+// Export applicants CSV from Supabase + signed Blob links.
+// Requires deps: "@supabase/supabase-js" and "@vercel/blob".
+import { createClient } from "@supabase/supabase-js";
 import { get } from "@vercel/blob";
 
 function csvEscape(v: any) {
   const s = (v ?? "").toString();
-  return /[",\n]/.test(s) ? \""+s.replace(/"/g, '""')+\" : s;
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.query.key !== process.env.EXPORT_KEY && req.query.key !== "ZAIN-ADMIN") {
+export default async function handler(req: any, res: any) {
+  const provided = (req.query && (req.query.key as string)) || "";
+  const allowed = process.env.EXPORT_KEY || "ZAIN-ADMIN";
+  if (provided !== allowed) {
     return res.status(401).json({ ok: false, error: "Unauthorized" });
   }
 
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE) {
+    return res
+      .status(500)
+      .json({ ok: false, error: "Missing SUPABASE env vars" });
+  }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
   try {
-    await sql\`CREATE TABLE IF NOT EXISTS applications (id SERIAL PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      job_id TEXT, job_title TEXT, company TEXT, location TEXT, type TEXT, tags TEXT,
-      name TEXT, email TEXT, phone TEXT, cv_url TEXT, cv_blob_id TEXT);\`;
+    const { data, error } = await supabase
+      .from("applications")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
 
-    const { rows } = await sql\`SELECT * FROM applications ORDER BY created_at DESC;\`;
-
-    const withSigned: any[] = [];
-    for (const r of rows) {
-      let signed = "";
-      try {
-        if (r.cv_blob_id) {
-          const info = await get(r.cv_blob_id);
-          signed = (info as any)?.downloadUrl || "";
+    // Try to add a signed download URL for each Blob
+    const withSigned = await Promise.all(
+      (data || []).map(async (r: any) => {
+        let cv_signed_url = "";
+        try {
+          if (r.cv_blob_id) {
+            const info = await get(r.cv_blob_id);
+            cv_signed_url = (info as any)?.downloadUrl || "";
+          }
+        } catch {
+          // ignore signing errors
         }
-      } catch {}
-      withSigned.push({ ...r, cv_signed_url: signed });
-    }
+        return { ...r, cv_signed_url };
+      })
+    );
 
-    const headers = ["id","created_at","job_id","job_title","company","location","type","tags","name","email","phone","cv_url","cv_blob_id","cv_signed_url"];
-    const csv = [ headers.join(","), ...withSigned.map(r => headers.map(h => csvEscape((r as any)[h])).join(",")) ].join("\n");
+    const headers = [
+      "id",
+      "created_at",
+      "job_id",
+      "job_title",
+      "company",
+      "location",
+      "type",
+      "tags",
+      "name",
+      "email",
+      "phone",
+      "cv_url",
+      "cv_blob_id",
+      "cv_signed_url"
+    ];
+
+    const lines = [];
+    lines.push(headers.join(","));
+    for (const r of withSigned) {
+      const row = headers.map((h) => csvEscape(r[h])).join(",");
+      lines.push(row);
+    }
+    const csv = lines.join("\n");
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", "attachment; filename=\"applications-export.csv\"");
+    res.setHeader("Content-Disposition", 'attachment; filename="applications-export.csv"');
     return res.status(200).send(csv);
   } catch (e: any) {
-    console.error(e);
-    return res.status(500).json({ ok: false, error: e?.message || "Export failed" });
+    return res
+      .status(500)
+      .json({ ok: false, error: e?.message || "Export failed" });
   }
 }
