@@ -1,6 +1,6 @@
 // /api/export.ts
-import { createClient } from "@supabase/supabase-js";
-import { get } from "@vercel/blob";
+import { google } from "googleapis";
+import { getGoogleAuth } from "./_google";
 
 function csvEscape(v: any) {
   const s = (v ?? "").toString();
@@ -14,50 +14,23 @@ export default async function handler(req: any, res: any) {
     return res.status(401).json({ ok: false, error: "Unauthorized" });
   }
 
-  const SUPABASE_URL = process.env.SUPABASE_URL;
-  const SUPABASE_SERVICE_ROLE =
-    process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE) {
-    return res.status(500).json({ ok: false, error: "Missing SUPABASE env vars" });
-  }
-
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
   try {
-    const { data, error } = await supabase
-      .from("applications")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (error) throw error;
+    const sheetId = process.env.GOOGLE_SHEETS_ID || "";
+    if (!sheetId) return res.status(500).json({ ok: false, error: "Missing GOOGLE_SHEETS_ID" });
 
-    const withSigned = await Promise.all(
-      (data || []).map(async (r: any) => {
-        let cv_signed_url = "";
-        try {
-          if (r.cv_blob_id) {
-            const info = await get(r.cv_blob_id);
-            cv_signed_url = (info as any)?.downloadUrl || "";
-          }
-        } catch {}
-        return { ...r, cv_signed_url };
-      })
-    );
+    const auth = getGoogleAuth();
+    const sheets = google.sheets({ version: "v4", auth });
 
-    const headers = [
-      "id","created_at","job_id","job_title","company","location","type","tags",
-      "name","email","phone","cv_url","cv_blob_id","cv_signed_url"
-    ];
+    // Read entire first sheet
+    const resp = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: "A:Z"
+    });
 
-    const lines = [];
-    lines.push(headers.join(","));
-    for (const r of withSigned) {
-      lines.push(headers.map(h => csvEscape(r[h])).join(","));
-    }
-    const csv = lines.join("\n");
+    const rows = (resp.data.values || []) as string[][];
+    if (!rows.length) return res.status(200).send("timestamp,jobId,jobTitle,company,location,type,tags,name,email,phone,cvUrl,cvFileId");
 
+    const csv = rows.map(r => r.map(csvEscape).join(",")).join("\n");
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", 'attachment; filename="applications-export.csv"');
     return res.status(200).send(csv);
