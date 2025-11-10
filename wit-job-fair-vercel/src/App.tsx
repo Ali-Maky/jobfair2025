@@ -364,6 +364,182 @@ export default function JobFairLanding() {
             onSuccess={() => { setAdmin(true); setIsAdmin(true); setShowAdminLogin(false); }}
           />
         )}
+        function JobModal({ job, onClose, onSubmitted }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [file, setFile] = useState(null as File | null);
+  const [error, setError] = useState("");
+  const [ok, setOk] = useState(false);
+
+  function validate() {
+    if (!name.trim()) return "Please enter your full name.";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Please enter a valid email.";
+    if (!/^[0-9+\-()\s]{7,}$/.test(phone)) return "Please enter a valid phone number.";
+    if (!file) return "Please attach your CV (PDF or DOCX).";
+    const okType = [
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/msword",
+    ];
+    if (!okType.includes(file.type)) return "Unsupported file type. Upload PDF or DOC/DOCX.";
+    const maxMB = 10;
+    if (file.size > maxMB * 1024 * 1024) return `File is too large. Max ${maxMB}MB.`;
+    return "";
+  }
+
+  // Submit to your /api endpoints (Vercel)
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const v = validate();
+    if (v) { setError(v); setOk(false); return; }
+    setError("");
+
+    try {
+      // 1) Upload CV to Blob
+      let cvUrl = "", cvBlobId = "";
+      if (file) {
+        const fd = new FormData();
+        fd.append("jobId", job.id);
+        fd.append("file", file, file.name);
+
+        const upl = await fetch("/api/upload", { method: "POST", body: fd });
+        const up = await upl.json();
+        if (!upl.ok || !up?.ok) throw new Error(up?.error || "Upload failed");
+        cvUrl = up.cvUrl; cvBlobId = up.cvBlobId;
+      }
+
+      // 2) Save application row
+      const resp = await fetch("/api/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobId: job.id,
+          jobTitle: job.title,
+          company: job.company,
+          location: job.location,
+          type: job.type,
+          tags: (job.tags || []).join(","),
+          name, email, phone,
+          cvUrl, cvBlobId
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data?.ok) throw new Error(data?.error || "Could not save application");
+
+      setOk(true);
+      onSubmitted?.(job.id);
+      setName(""); setEmail(""); setPhone(""); setFile(null);
+    } catch (err: any) {
+      setOk(false);
+      setError(err?.message || "Submission failed");
+    }
+  }
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+    >
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden />
+      <motion.div
+        initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }}
+        // Panel: no scroll; body below scrolls
+        className="relative z-10 w-full max-w-3xl bg-white shadow-xl md:rounded-3xl
+                   h-[90svh] md:h-auto max-h-[90svh] md:max-h-[85svh]
+                   overflow-hidden flex flex-col"
+        role="dialog" aria-modal="true"
+      >
+        {/* Sticky header */}
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-6
+                        border-b bg-white/95 backdrop-blur px-6 py-4">
+          <div>
+            <h2 className="text-2xl font-semibold tracking-tight">{job.title}</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              {job.company} • {job.location} • {job.type}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-full bg-gray-100 px-3 py-1 text-sm text-gray-600 hover:bg-gray-200"
+          >
+            Close
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto overscroll-contain px-6 pt-4 pb-28">
+          <div className="grid gap-8 md:grid-cols-2">
+            {/* Left: description */}
+            <div>
+              <p className="text-gray-800">{job.description}</p>
+
+              <div className="mt-5">
+                <h3 className="text-sm font-semibold text-gray-900">Responsibilities</h3>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                  {job.responsibilities.map((r: string, i: number) => <li key={i}>{r}</li>)}
+                </ul>
+              </div>
+
+              <div className="mt-5">
+                <h3 className="text-sm font-semibold text-gray-900">Requirements</h3>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                  {job.requirements.map((r: string, i: number) => <li key={i}>{r}</li>)}
+                </ul>
+              </div>
+            </div>
+
+            {/* Right: apply form */}
+            <form onSubmit={handleSubmit} className="rounded-2xl border border-gray-200 p-4 pb-24">
+              <h3 className="text-base font-semibold">Apply for this role</h3>
+              <p className="mb-4 mt-1 text-sm text-gray-600">Upload your CV and details.</p>
+
+              <label className="mb-2 block text-sm font-medium">Full name</label>
+              <input
+                className="mb-3 w-full rounded-xl border border-gray-200 px-3 py-2 focus:border-purple-500 focus:outline-none"
+                value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name"
+              />
+
+              <label className="mb-2 mt-1 block text-sm font-medium">Email</label>
+              <input
+                type="email"
+                className="mb-3 w-full rounded-xl border border-gray-200 px-3 py-2 focus:border-purple-500 focus:outline-none"
+                value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com"
+              />
+
+              <label className="mb-2 mt-1 block text-sm font-medium">Phone</label>
+              <input
+                className="mb-3 w-full rounded-xl border border-gray-200 px-3 py-2 focus:border-purple-500 focus:outline-none"
+                value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+964 …"
+              />
+
+              <label className="mb-2 mt-1 block text-sm font-medium">CV (PDF / DOCX)</label>
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                className="mb-4 w-full rounded-xl border border-gray-200 px-3 py-2 file:mr-3 file:rounded-lg file:border-0 file:bg-purple-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-purple-700"
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+              />
+
+              {error && <div className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+              {ok && <div className="mb-3 rounded-xl bg-green-50 px-3 py-2 text-sm text-green-700">Submitted! We'll be in touch.</div>}
+
+              <button
+                type="submit"
+                className="w-full rounded-2xl bg-gradient-to-r from-purple-600 to-fuchsia-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-95"
+              >
+                Submit Application
+              </button>
+            </form>
+          </div>
+        </div>
+
+        {/* Sticky footer (optional actions) */}
+        <div className="sticky bottom-0 z-10 border-t bg-white/95 backdrop-blur px-6 py-3" />
+      </motion.div>
+    </motion.div>
+  );
+}
       </AnimatePresence>
 
       {/* Footer */}
