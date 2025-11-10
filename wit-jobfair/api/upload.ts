@@ -1,21 +1,33 @@
+// /api/upload.ts (at repo root)
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import Busboy from "busboy";
+import * as BusboyNS from "busboy";
 import { put } from "@vercel/blob";
 
 export const config = { api: { bodyParser: false } };
 
-function parseMultipart(req: VercelRequest): Promise<{ fields: Record<string,string>; file?: { buffer: Buffer; filename: string; mimetype: string } }> {
+function getBusboy() {
+  // supports both default and namespace import
+  const BB: any = (BusboyNS as any).default ?? (BusboyNS as any);
+  return BB;
+}
+
+function parseMultipart(req: VercelRequest): Promise<{
+  fields: Record<string, string>;
+  file?: { buffer: Buffer; filename: string; mimetype: string };
+}> {
   return new Promise((resolve, reject) => {
+    const Busboy = getBusboy();
     const bb = Busboy({ headers: req.headers as any });
+
     const fields: Record<string, string> = {};
     let fileBuf: Buffer | undefined;
     let fileName = "";
     let mime = "";
 
-    bb.on("field", (name, val) => { fields[name] = val; });
-    bb.on("file", (_name, file, info) => {
-      fileName = info.filename || "cv";
-      mime = (info as any).mimeType || "application/octet-stream";
+    bb.on("field", (name: string, val: string) => { fields[name] = val; });
+    bb.on("file", (_name: string, file: NodeJS.ReadableStream, info: any) => {
+      fileName = info?.filename || "cv";
+      mime = info?.mimeType || "application/octet-stream";
       const chunks: Buffer[] = [];
       file.on("data", (d: Buffer) => chunks.push(d));
       file.on("end", () => (fileBuf = Buffer.concat(chunks)));
@@ -27,7 +39,13 @@ function parseMultipart(req: VercelRequest): Promise<{ fields: Record<string,str
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
+  if (req.method !== "POST") {
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
+
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    return res.status(500).json({ ok: false, error: "Missing BLOB_READ_WRITE_TOKEN env var" });
+  }
 
   try {
     const { fields, file } = await parseMultipart(req);
@@ -46,10 +64,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       ok: true,
       cvUrl: putResult.url,
-      cvBlobId: putResult.url
+      cvBlobId: putResult.url,
     });
   } catch (e: any) {
-    console.error(e);
     return res.status(500).json({ ok: false, error: e?.message || "Upload failed" });
   }
 }
