@@ -1,25 +1,19 @@
-// /api/apply.ts (at repo root)
-import type { VercelRequest, VercelResponse } from "@vercel/node";
+// /api/apply.ts
 import { createClient } from "@supabase/supabase-js";
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Always handle non-POST safely
+export default async function handler(req: any, res: any) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  // Validate env vars first (otherwise supabase-js may throw)
   const SUPABASE_URL = process.env.SUPABASE_URL;
-  const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
+  const SUPABASE_SERVICE_ROLE =
+    process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE) {
-    return res.status(500).json({
-      ok: false,
-      error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE env var",
-    });
+    return res.status(500).json({ ok: false, error: "Missing SUPABASE_URL or SERVICE_ROLE env vars" });
   }
 
-  // Create client only after we’ve validated env vars
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
@@ -41,10 +35,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
 
     const { error } = await supabase.from("applications").insert(payload);
-    if (error) {
-      // Return Supabase error back to UI
-      return res.status(500).json({ ok: false, error: error.message });
-    }
+    if (error) return res.status(500).json({ ok: false, error: error.message });
 
     return res.status(200).json({ ok: true });
   } catch (e: any) {
