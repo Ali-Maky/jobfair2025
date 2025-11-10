@@ -242,6 +242,12 @@ export default function JobFairLanding() {
 function AddVacancyModal({ onClose, onSave }: { onClose:()=>void; onSave:(jobDraft: Partial<Job>)=>void; }) {
   const [form, setForm] = useState({ title:"", company:"", location:"", type:"Full-time", tags:"", description:"", responsibilities:"", requirements:"", applyLink:"" });
   const [error, setError] = useState(""); const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>) => setForm((f)=>({...f,[k]: e.target.value}));
+  async function parseJsonSafe(resp: Response) {
+  const ct = resp.headers.get("content-type") || "";
+  if (ct.includes("application/json")) return await resp.json();
+  const text = await resp.text();
+  throw new Error(text || `HTTP ${resp.status}`);
+}
   function handleSubmit(e: React.FormEvent){ e.preventDefault(); if(!form.title.trim()) return setError("Title is required."); setError(""); onSave({...form}); }
   const formId = "add-vacancy-form";
   return (
@@ -332,12 +338,12 @@ function JobModal({ job, onClose, onSubmitted }: { job:Job; onClose:()=>void; on
       let cvUrl = "", cvBlobId = "";
       if (file) {
         const fd = new FormData(); fd.append("jobId", job.id); fd.append("file", file, file.name);
-        const upl = await fetch("/api/upload", { method: "POST", body: fd }); const up = await upl.json();
+        const upl = await fetch("/api/upload", { method: "POST", body: fd }); const up = await parseJsonSafe(upl);
         if (!upl.ok || !up?.ok) throw new Error(up?.error || "Upload failed"); cvUrl = up.cvUrl; cvBlobId = up.cvBlobId;
       }
       const resp = await fetch("/api/apply", { method: "POST", headers: {"Content-Type":"application/json"},
         body: JSON.stringify({ jobId: job.id, jobTitle: job.title, company: job.company, location: job.location, type: job.type, tags: (job.tags||[]).join(","), name, email, phone, cvUrl, cvBlobId }) });
-      const data = await resp.json(); if (!resp.ok || !data?.ok) throw new Error(data?.error || "Could not save application");
+      const data = await parseJsonSafe(resp); if (!resp.ok || !data?.ok) throw new Error(data?.error || "Could not save application");
       setOk(true); onSubmitted?.(job.id); setName(""); setEmail(""); setPhone(""); setFile(null);
     } catch (err:any) { setOk(false); setError(err?.message || "Submission failed"); }
   }
