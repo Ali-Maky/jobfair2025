@@ -1,6 +1,17 @@
 // /api/apply.ts
 import { google } from "googleapis";
-import { getGoogleAuth } from "./_google";
+
+function getAuth() {
+  const b64 = process.env.GOOGLE_CLOUD_CREDENTIALS_BASE64 || "";
+  if (!b64) throw new Error("Missing GOOGLE_CLOUD_CREDENTIALS_BASE64");
+  const json = Buffer.from(b64, "base64").toString("utf8");
+  const creds = JSON.parse(json);
+  return new google.auth.JWT({
+    email: creds.client_email,
+    key: creds.private_key,
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+}
 
 export default async function handler(req: any, res: any) {
   if (req.method !== "POST") {
@@ -16,10 +27,9 @@ export default async function handler(req: any, res: any) {
     const sheetId = process.env.GOOGLE_SHEETS_ID || "";
     if (!sheetId) return res.status(500).json({ ok: false, error: "Missing GOOGLE_SHEETS_ID" });
 
-    const auth = getGoogleAuth();
+    const auth = getAuth();
     const sheets = google.sheets({ version: "v4", auth });
 
-    // Append at end of first sheet (A:…)
     const values = [[
       new Date().toISOString(),
       jobId || "", jobTitle || "", company || "", location || "", type || "", tags || "",
