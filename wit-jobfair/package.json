@@ -11,13 +11,13 @@
     "build": "vite build",
     "preview": "vite preview --strictPort"
   },
-  {
+ {
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.0",
-    "@vercel/blob": "^0.24.0",
+    "googleapis": "^139.0.0",
     "busboy": "^1.6.0"
   }
 }
+
 
   "devDependencies": {
     "@types/node": "^20.12.12",
