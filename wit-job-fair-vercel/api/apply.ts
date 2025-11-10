@@ -13,6 +13,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const missing = ['jobId','jobTitle','name','email'].filter(k => !((req.body || {}) as any)[k]);
     if (missing.length) return res.status(400).json({ ok:false, error:'Missing fields', missing });
+    const esc = (v: any) => {
+  if (v == null) return '';
+  const s = String(v).replace(/"/g, '""');
+  return /[",\n]/.test(s) ? `"${s}"` : s;
+};
 
     await sql`
       insert into applications
