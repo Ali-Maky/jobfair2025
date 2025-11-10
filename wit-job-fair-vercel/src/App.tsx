@@ -1,14 +1,18 @@
 import React, { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-// =============================
-// Branding
-// =============================
-const ZAIN_LOGO_URL = "/zain-logo.png"; // keep logo in /public as zain-logo.png
+/**
+ * Woman In Tech 2025 - Job Fair
+ * - Admin passcode: ZAIN-ADMIN (demo only)
+ * - Backend endpoints expected:
+ *    - /api/upload  (multipart -> Vercel Blob)
+ *    - /api/apply   (JSON -> Vercel Postgres)
+ * - Logo: place /public/zain-logo.png in your project
+ */
 
-// =============================
-// Types
-// =============================
+const ZAIN_LOGO_URL = "/zain-logo.png";
+
+// ---------- Types ----------
 type Job = {
   id: string;
   title: string;
@@ -19,12 +23,10 @@ type Job = {
   description: string;
   responsibilities: string[];
   requirements: string[];
-  applyLink?: string; // optional external form link (Airtable/Tally)
+  applyLink?: string; // optional external form link
 };
 
-// =============================
-// Demo Data
-// =============================
+// ---------- Demo Data ----------
 const INITIAL_JOBS: Job[] = [
   {
     id: "1",
@@ -88,15 +90,11 @@ const INITIAL_JOBS: Job[] = [
   },
 ];
 
-// =============================
-// Admin flags
-// =============================
-const ADMIN_KEY = "job-fair-admin"; // '1' when signed in
+// ---------- Admin flags ----------
+const ADMIN_KEY = "job-fair-admin"; // '1' means signed in
 const ADMIN_HINT = "Ask organizer for passcode";
 
-// =============================
-// Helpers
-// =============================
+// ---------- Helpers ----------
 const cx = (...xs: Array<string | false | null | undefined>) =>
   xs.filter(Boolean).join(" ");
 
@@ -122,7 +120,6 @@ function getIsAdmin() {
     return false;
   }
 }
-
 function setIsAdmin(v: boolean) {
   try {
     if (v) localStorage.setItem(ADMIN_KEY, "1");
@@ -190,9 +187,9 @@ function parseCSV(text: string) {
   });
 }
 
-// =============================
+// ===================================================
 // Main Page
-// =============================
+// ===================================================
 export default function JobFairLanding() {
   const [query, setQuery] = useState("");
   const [type, setType] = useState("All");
@@ -228,7 +225,7 @@ export default function JobFairLanding() {
     setJobs((prev) => prev.filter((j) => j.id !== id));
   }
 
-  // Import/export helpers (scoped for Admin UI)
+  // Import/export helpers (admin)
   async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -252,7 +249,6 @@ export default function JobFairLanding() {
       e.target.value = "";
     }
   }
-
   function exportJSON() {
     const blob = new Blob([JSON.stringify(jobs, null, 2)], {
       type: "application/json",
@@ -264,7 +260,6 @@ export default function JobFairLanding() {
     a.click();
     URL.revokeObjectURL(url);
   }
-
   async function loadFromSheet(url: string) {
     try {
       const res = await fetch(url);
@@ -299,8 +294,7 @@ export default function JobFairLanding() {
                 </h1>
               </div>
               <p className="mt-2 max-w-2xl text-sm text-gray-600 md:text-base">
-                Explore roles from leading partners. Click a vacancy to view the job description
-                and apply by uploading your CV.
+                Explore roles from leading partners. Click a vacancy to view the job description and apply by uploading your CV.
               </p>
             </div>
 
@@ -529,11 +523,11 @@ export default function JobFairLanding() {
       </footer>
     </div>
   );
-}
+} // << END JobFairLanding
 
-// =============================
-// Admin Add Vacancy Modal
-// =============================
+// ===================================================
+// Add Vacancy (Admin)
+// ===================================================
 function AddVacancyModal({
   onClose,
   onSave,
@@ -650,9 +644,9 @@ function AddVacancyModal({
   );
 }
 
-// =============================
-// Admin Login Modal
-// =============================
+// ===================================================
+// Admin Login
+// ===================================================
 function AdminLoginModal({
   onClose,
   onSuccess,
@@ -707,9 +701,9 @@ function AdminLoginModal({
   );
 }
 
-// =============================
+// ===================================================
 // Job Modal (Apply)
-// =============================
+// ===================================================
 function JobModal({
   job,
   onClose,
@@ -754,7 +748,7 @@ function JobModal({
     setError("");
 
     try {
-      // If external form is provided, open it prefilled
+      // External form mode
       if (job.applyLink) {
         const url =
           `${job.applyLink}${job.applyLink.includes("?") ? "&" : "?"}` +
@@ -769,9 +763,8 @@ function JobModal({
         return;
       }
 
-      // 1) Upload CV to Blob
-      let cvUrl = "",
-        cvBlobId = "";
+      // 1) Upload CV
+      let cvUrl = "", cvBlobId = "";
       if (file) {
         const fd = new FormData();
         fd.append("jobId", job.id);
@@ -780,11 +773,10 @@ function JobModal({
         const upl = await fetch("/api/upload", { method: "POST", body: fd });
         const up = await upl.json();
         if (!upl.ok || !up?.ok) throw new Error(up?.error || "Upload failed");
-        cvUrl = up.cvUrl;
-        cvBlobId = up.cvBlobId;
+        cvUrl = up.cvUrl; cvBlobId = up.cvBlobId;
       }
 
-      // 2) Save application row
+      // 2) Save application
       const resp = await fetch("/api/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -795,11 +787,8 @@ function JobModal({
           location: job.location,
           type: job.type,
           tags: (job.tags || []).join(","),
-          name,
-          email,
-          phone,
-          cvUrl,
-          cvBlobId,
+          name, email, phone,
+          cvUrl, cvBlobId,
         }),
       });
       const data = await resp.json();
@@ -807,10 +796,7 @@ function JobModal({
 
       setOk(true);
       onSubmitted?.(job.id);
-      setName("");
-      setEmail("");
-      setPhone("");
-      setFile(null);
+      setName(""); setEmail(""); setPhone(""); setFile(null);
     } catch (err: any) {
       setOk(false);
       setError(err?.message || "Submission failed");
@@ -820,20 +806,15 @@ function JobModal({
   return (
     <motion.div
       className="fixed inset-0 z-50 flex items-center justify-center"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
     >
       <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden />
       <motion.div
-        initial={{ y: 40, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: 40, opacity: 0 }}
+        initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }}
         className="relative z-10 w-full max-w-3xl bg-white shadow-xl md:rounded-3xl
                    h-[90svh] md:h-auto max-h-[90svh] md:max-h-[85svh]
                    overflow-hidden flex flex-col"
-        role="dialog"
-        aria-modal="true"
+        role="dialog" aria-modal="true"
       >
         {/* Sticky header */}
         <div className="sticky top-0 z-10 flex items-start justify-between gap-6 border-b bg-white/95 backdrop-blur px-6 py-4">
@@ -857,22 +838,16 @@ function JobModal({
             {/* Left: description */}
             <div>
               <p className="text-gray-800">{job.description}</p>
-
               <div className="mt-5">
                 <h3 className="text-sm font-semibold text-gray-900">Responsibilities</h3>
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-700">
-                  {job.responsibilities.map((r, i) => (
-                    <li key={i}>{r}</li>
-                  ))}
+                  {job.responsibilities.map((r, i) => <li key={i}>{r}</li>)}
                 </ul>
               </div>
-
               <div className="mt-5">
                 <h3 className="text-sm font-semibold text-gray-900">Requirements</h3>
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-700">
-                  {job.requirements.map((r, i) => (
-                    <li key={i}>{r}</li>
-                  ))}
+                  {job.requirements.map((r, i) => <li key={i}>{r}</li>)}
                 </ul>
               </div>
             </div>
@@ -882,8 +857,7 @@ function JobModal({
               <div className="rounded-2xl border border-purple-200/60 bg-purple-50 p-4">
                 <h3 className="text-base font-semibold">Apply on our external form</h3>
                 <p className="mb-4 mt-1 text-sm text-gray-700">
-                  This role uses an external application form. Click the button to open it in a new
-                  tab with basic details pre-filled.
+                  This role uses an external application form. Click the button to open it in a new tab with details pre-filled.
                 </p>
                 <a
                   href={
@@ -901,8 +875,7 @@ function JobModal({
                   Open Application Form
                 </a>
                 <p className="mt-3 text-xs text-gray-500">
-                  Tip: In Airtable/Tally, map URL params like <code>jobId</code> and{" "}
-                  <code>jobTitle</code> to prefill fields.
+                  Tip: In Airtable/Tally, map URL params like <code>jobId</code> and <code>jobTitle</code> to prefill fields.
                 </p>
               </div>
             ) : (
@@ -943,14 +916,8 @@ function JobModal({
                   onChange={(e) => setFile(e.target.files?.[0] || null)}
                 />
 
-                {error && (
-                  <div className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
-                )}
-                {ok && (
-                  <div className="mb-3 rounded-xl bg-green-50 px-3 py-2 text-sm text-green-700">
-                    Submitted! We'll be in touch.
-                  </div>
-                )}
+                {error && <div className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+                {ok && <div className="mb-3 rounded-xl bg-green-50 px-3 py-2 text-sm text-green-700">Submitted! We'll be in touch.</div>}
 
                 <button
                   type="submit"
@@ -970,9 +937,7 @@ function JobModal({
   );
 }
 
-// =============================
-// (Optional) Dev sanity tests
-// =============================
+// ---------- Optional quick sanity tests (non-blocking) ----------
 (function runDevTests() {
   try {
     const sample = normalizeJob({
@@ -987,14 +952,8 @@ function JobModal({
       requirements: "Req1;Req2; Req3",
     });
     console.assert(Array.isArray(sample.tags) && sample.tags.length === 3, "Tags -> comma split");
-    console.assert(sample.responsibilities.length === 3, "Responsibilities -> ; split");
-    console.assert(sample.requirements.length === 3, "Requirements -> ; split");
-
-    const mixed = "A\nB;C".split(/;|\n/).map((s) => s.trim()).filter(Boolean);
-    console.assert(
-      mixed.length === 3 && mixed[0] === "A" && mixed[1] === "B" && mixed[2] === "C",
-      "Regex should split on semicolon OR newline"
-    );
+    console.assert(sample.responsibilities.length === 3, "Responsibilities -> ;/\\n split");
+    console.assert(sample.requirements.length === 3, "Requirements -> ;/\\n split");
   } catch (e) {
     console.warn("DEV tests failed:", e);
   }
