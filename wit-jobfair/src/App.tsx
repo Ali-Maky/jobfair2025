@@ -381,7 +381,8 @@ function AddVacancyModal({
   onSave,
 }: {
   onClose: () => void;
-  onSave: (j: Partial<Job>) => void;
+  // accept raw string fields; parent will call normalizeJob(...)
+  onSave: (j: any) => void;
 }) {
   const [form, setForm] = React.useState({
     title: "",
@@ -402,12 +403,7 @@ function AddVacancyModal({
     e.preventDefault();
     if (!form.title.trim()) return setError("Title is required.");
     setError("");
-    onSave({
-      ...form,
-      tags: form.tags,
-      responsibilities: form.responsibilities,
-      requirements: form.requirements,
-    });
+    onSave({ ...form });
   }
 
   const formId = "add-vacancy-form";
